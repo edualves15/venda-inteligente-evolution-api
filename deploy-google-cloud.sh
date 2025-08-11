@@ -420,6 +420,7 @@ setup_conditional_configs() {
     # JWT/Auth configurações críticas
     export JWT_SECRET="$evolution_jwt_secret"
     export AUTHENTICATION_JWT_SECRET="$evolution_jwt_secret"
+    export AUTHENTICATION_API_KEY="$evolution_api_key"
 }
 
 # Criar docker-compose otimizado
