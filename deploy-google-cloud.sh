@@ -4,103 +4,64 @@
 # 
 # O que este script faz:
 # 1. Carrega credenciais do Google Secret Manager (API keys, senhas)
-# 2. Configura 150+ variáveis de ambiente necessárias para a Evolution API
+# 2. Configura 150+ variaveis de ambiente necessarias para a Evolution API
 # 3. Gera docker-compose.yaml seguro (SOBRESCREVE o arquivo existente, sem usar .env)
 # 4. Faz deploy dos containers (Evolution API + PostgreSQL + Redis)
-# 5. Verifica se tudo está funcionando
+# 5. Verifica se tudo esta funcionando
 #
 # Uso: ./deploy.sh
-# Repositório: https://github.com/edualves15/venda-inteligente-evolution-api
-
-# Configuração UTF-8 robusta (funciona em qualquer Ubuntu)
-export LC_ALL=C.UTF-8
-export LANG=C.UTF-8
-export LANGUAGE=en_US:en
-
-# Força reconfiguração UTF-8 se necessário
-if [ "$(locale charmap 2>/dev/null)" != "UTF-8" ]; then
-    echo "⚠️  Configurando UTF-8 no sistema..."
-    export LC_ALL=C.UTF-8
-    export LANG=C.UTF-8
-    unset LANGUAGE
-fi
+# Repositorio: https://github.com/edualves15/venda-inteligente-evolution-api
 
 echo "========================================"
-echo "  EVOLUTION API - INICIALIZAÇÃO SEGURA  "
+echo "  EVOLUTION API - INICIALIZACAO SEGURA  "
 echo "========================================"
 
-# Funções utilitárias
+# Funcoes utilitarias
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
-check_status() { [ $? -eq 0 ] && log "✓ $2" || { log "ERRO: $1"; exit 1; }; }
+check_status() { [ $? -eq 0 ] && log "OK $2" || { log "ERRO: $1"; exit 1; }; }
 
-# Configurar UTF-8 no sistema se necessário
-setup_utf8() {
-    log "Configurando UTF-8..."
-    
-    # Forçar UTF-8 na sessão atual
-    export LC_ALL=C.UTF-8
-    export LANG=C.UTF-8
-    export LANGUAGE=C
-    
-    # Verificar se locale C.UTF-8 está disponível
-    if ! locale -a 2>/dev/null | grep -q "C.UTF-8"; then
-        log "Instalando suporte UTF-8..."
-        sudo apt-get update -qq >/dev/null 2>&1
-        sudo apt-get install -y locales >/dev/null 2>&1
-        sudo locale-gen C.UTF-8 >/dev/null 2>&1
-        sudo update-locale LANG=C.UTF-8 >/dev/null 2>&1
-    fi
-    
-    # Re-exportar após instalação
-    export LC_ALL=C.UTF-8
-    export LANG=C.UTF-8
-    export LANGUAGE=C
-    
-    log "✓ UTF-8 configurado"
-}
-
-# Verificar dependências críticas
+# Verificar dependencias criticas
 check_dependencies() {
-    log "Verificando dependências..."
+    log "Verificando dependencias..."
     local deps=("gcloud:gcloud CLI:https://cloud.google.com/sdk/docs/install" 
                 "docker:Docker:sudo apt update && sudo apt install -y docker.io"
-                "docker compose:Docker Compose:incluído com Docker")
+                "docker compose:Docker Compose:incluido com Docker")
     
     for dep in "${deps[@]}"; do
         IFS=':' read -r cmd desc install <<< "$dep"
         if ! command -v $cmd &>/dev/null; then
-            log "ERRO: $desc não encontrado!"
+            log "ERRO: $desc nao encontrado!"
             log "Instale: $install"
             exit 1
         fi
-        log "✓ $desc encontrado"
+        log "OK $desc encontrado"
     done
     
-    # Verificações adicionais
+    # Verificacoes adicionais
     docker ps &>/dev/null || { 
-        log "ERRO: Usuário sem permissões Docker!"
+        log "ERRO: Usuario sem permissoes Docker!"
         log "Execute: sudo usermod -aG docker \$USER && newgrp docker"
         exit 1
     }
-    log "✓ Permissões Docker verificadas"
+    log "OK Permissoes Docker verificadas"
     
     gcloud auth list --filter=status:ACTIVE --format="value(account)" &>/dev/null || {
-        log "ERRO: Não autenticado no Google Cloud!"
+        log "ERRO: Nao autenticado no Google Cloud!"
         log "Execute: gcloud auth login"
         exit 1
     }
-    log "✓ Autenticação Google Cloud verificada"
+    log "OK Autenticacao Google Cloud verificada"
 }
 
 # Carregar secrets do Secret Manager
 load_secrets() {
     log "Carregando secrets do Secret Manager..."
     
-    # Definir secrets obrigatórios e opcionais
+    # Definir secrets obrigatorios e opcionais
     declare -A SECRETS=(
         ["evolution-api-key"]="true:API Key da Evolution"
         ["evolution-db-password"]="true:Senha do banco de dados"
-        ["evolution-jwt-secret"]="false:JWT Secret para autenticação"
+        ["evolution-jwt-secret"]="false:JWT Secret para autenticacao"
         ["evolution-sentry-dsn"]="false:Sentry DSN para monitoramento"
         ["evolution-s3-access-key"]="false:S3 Access Key"
         ["evolution-s3-secret-key"]="false:S3 Secret Key"
@@ -124,23 +85,25 @@ load_secrets() {
         value=$(gcloud secrets versions access latest --secret="$secret" 2>/dev/null)
         if [ $? -ne 0 ] || [ -z "$value" ]; then
             if [ "$required" == "true" ]; then
-                log "ERRO: Secret obrigatório '$secret' não encontrado!"
+                log "ERRO: Secret obrigatorio '$secret' nao encontrado!"
                 log "Crie: gcloud secrets create $secret --data-file=-"
                 exit 1
             else
-                log "⚠ Secret opcional '$secret' não encontrado (continuando...)"
+                log "AVISO: Secret opcional '$secret' nao encontrado (continuando...)"
                 declare -g "${secret//-/_}"=""
             fi
         else
-            log "✓ $desc carregado"
+            log "OK $desc carregado"
+            # Limpar whitespace/newlines dos secrets
+            value=$(echo "$value" | tr -d '\r\n\t ' | sed 's/[[:space:]]//g')
             declare -g "${secret//-/_}"="$value"
         fi
     done
     
-    # Gerar valores padrão para secrets vazios
+    # Gerar valores padrao para secrets vazios
     [ -z "$evolution_jwt_secret" ] && {
         evolution_jwt_secret=$(openssl rand -base64 64)
-        log "✓ JWT Secret gerado automaticamente"
+        log "OK JWT Secret gerado automaticamente"
     }
     
     [ -z "$evolution_rabbitmq_uri" ] && evolution_rabbitmq_uri="amqp://localhost"
@@ -150,15 +113,15 @@ load_secrets() {
 get_vm_ip() {
     log "Obtendo IP externo da VM..."
     VM_IP=$(curl -s --max-time 10 http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip -H "Metadata-Flavor: Google" 2>/dev/null)
-    [ -z "$VM_IP" ] && { log "ERRO: Não foi possível obter IP da VM!"; exit 1; }
-    log "✓ IP externo: $VM_IP"
+    [ -z "$VM_IP" ] && { log "ERRO: Nao foi possivel obter IP da VM!"; exit 1; }
+    log "OK IP externo: $VM_IP"
 }
 
-# Configurar variáveis de ambiente
+# Configurar variaveis de ambiente
 setup_environment() {
-    log "Configurando variáveis de ambiente..."
+    log "Configurando variaveis de ambiente..."
     
-    # Configurações básicas do servidor
+    # Configuracoes basicas do servidor
     declare -A SERVER_CONFIG=(
         [SERVER_TYPE]="http"
         [SERVER_PORT]="8080"
@@ -168,7 +131,7 @@ setup_environment() {
         [CORS_CREDENTIALS]="true"
     )
     
-    # Configurações de log
+    # Configuracoes de log
     declare -A LOG_CONFIG=(
         [LOG_LEVEL]="ERROR,WARN,INFO"
         [LOG_COLOR]="false"
@@ -176,7 +139,7 @@ setup_environment() {
         [EVENT_EMITTER_MAX_LISTENERS]="50"
     )
     
-    # Configurações de instância
+    # Configuracoes de instancia
     declare -A INSTANCE_CONFIG=(
         [DEL_INSTANCE]="false"
         [CONFIG_SESSION_PHONE_CLIENT]="Evolution API"
@@ -186,7 +149,7 @@ setup_environment() {
         [LANGUAGE]="pt"
     )
     
-    # Configurações de autenticação
+    # Configuracoes de autenticacao
     declare -A AUTH_CONFIG=(
         [AUTHENTICATION_API_KEY]="$evolution_api_key"
         [AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES]="true"
@@ -194,7 +157,7 @@ setup_environment() {
         [AUTHENTICATION_JWT_SECRET]="$evolution_jwt_secret"
     )
     
-    # Configurações de banco de dados
+    # Configuracoes de banco de dados
     declare -A DATABASE_CONFIG=(
         [DATABASE_PROVIDER]="postgresql"
         [DATABASE_CONNECTION_URI]="postgresql://postgres:${evolution_db_password}@postgres:5432/evolution_db?schema=evolution_api"
@@ -211,7 +174,7 @@ setup_environment() {
         [DATABASE_DELETE_MESSAGE]="true"
     )
     
-    # Configurações de cache Redis
+    # Configuracoes de cache Redis
     declare -A REDIS_CONFIG=(
         [CACHE_REDIS_ENABLED]="true"
         [CACHE_REDIS_URI]="redis://redis:6379/6"
@@ -221,7 +184,7 @@ setup_environment() {
         [CACHE_LOCAL_ENABLED]="false"
     )
     
-    # Configurações de comunicação
+    # Configuracoes de comunicacao
     declare -A COMM_CONFIG=(
         [SQS_ENABLED]="false"
         [SQS_ACCESS_KEY_ID]=""
@@ -236,7 +199,7 @@ setup_environment() {
         [WA_BUSINESS_LANGUAGE]="pt_BR"
     )
     
-    # Configurações de webhook (todas)
+    # Configuracoes de webhook (todas)
     declare -A WEBHOOK_CONFIG=(
         [WEBHOOK_GLOBAL_ENABLED]="false"
         [WEBHOOK_GLOBAL_URL]=""
@@ -280,7 +243,7 @@ setup_environment() {
         [WEBHOOK_RETRY_NON_RETRYABLE_STATUS_CODES]="400,401,403,404,422"
     )
     
-    # Configurações de integração
+    # Configuracoes de integracao
     declare -A INTEGRATION_CONFIG=(
         [TYPEBOT_ENABLED]="false"
         [TYPEBOT_API_VERSION]="latest"
@@ -290,7 +253,7 @@ setup_environment() {
         [EVOAI_ENABLED]="false"
     )
     
-    # Exportar todas as configurações
+    # Exportar todas as configuracoes
     local configs=(SERVER_CONFIG LOG_CONFIG INSTANCE_CONFIG AUTH_CONFIG DATABASE_CONFIG 
                    REDIS_CONFIG COMM_CONFIG WEBHOOK_CONFIG INTEGRATION_CONFIG)
     
@@ -301,13 +264,13 @@ setup_environment() {
         done
     done
     
-    # Configurações condicionais baseadas em secrets
+    # Configuracoes condicionais baseadas em secrets
     setup_conditional_configs
     
-    log "✓ Todas as variáveis configuradas"
+    log "OK Todas as variaveis configuradas"
 }
 
-# Configurar serviços opcionais baseados em secrets
+# Configurar servicos opcionais baseados em secrets
 setup_conditional_configs() {
     # Sentry
     if [ -n "$evolution_sentry_dsn" ]; then
@@ -412,12 +375,12 @@ setup_conditional_configs() {
         export SSL_CONF_PRIVKEY="" SSL_CONF_FULLCHAIN=""
     fi
     
-    # Export das variáveis de secrets usadas diretamente no docker-compose
+    # Export das variaveis de secrets usadas diretamente no docker-compose
     export evolution_db_password="$evolution_db_password"
     export evolution_api_key="$evolution_api_key"
     export evolution_jwt_secret="$evolution_jwt_secret"
     
-    # JWT/Auth configurações críticas
+    # JWT/Auth configuracoes criticas
     export JWT_SECRET="$evolution_jwt_secret"
     export AUTHENTICATION_JWT_SECRET="$evolution_jwt_secret"
     export AUTHENTICATION_API_KEY="$evolution_api_key"
@@ -425,7 +388,7 @@ setup_conditional_configs() {
 
 # Criar docker-compose otimizado
 create_docker_compose() {
-    log "Criando docker-compose.yaml com configurações seguras..."
+    log "Criando docker-compose.yaml com configuracoes seguras..."
     
     cat > docker-compose.yaml << 'EOF'
 version: '3.8'
@@ -462,12 +425,12 @@ services:
       - QRCODE_LIMIT=${QRCODE_LIMIT}
       - QRCODE_COLOR=${QRCODE_COLOR}
       - LANGUAGE=${LANGUAGE}
-      # Autenticação (SENSÍVEL)
+      # Autenticacao (SENSIVEL)
       - AUTHENTICATION_API_KEY=${AUTHENTICATION_API_KEY}
       - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=${AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES}
       - JWT_SECRET=${JWT_SECRET}
       - AUTHENTICATION_JWT_SECRET=${AUTHENTICATION_JWT_SECRET}
-      # Banco (SENSÍVEL)
+      # Banco (SENSIVEL)
       - DATABASE_PROVIDER=${DATABASE_PROVIDER}
       - DATABASE_CONNECTION_URI=${DATABASE_CONNECTION_URI}
       - DATABASE_CONNECTION_CLIENT_NAME=${DATABASE_CONNECTION_CLIENT_NAME}
@@ -481,7 +444,7 @@ services:
       - DATABASE_SAVE_IS_ON_WHATSAPP=${DATABASE_SAVE_IS_ON_WHATSAPP}
       - DATABASE_SAVE_IS_ON_WHATSAPP_DAYS=${DATABASE_SAVE_IS_ON_WHATSAPP_DAYS}
       - DATABASE_DELETE_MESSAGE=${DATABASE_DELETE_MESSAGE}
-      # Serviços externos
+      # Servicos externos
       - SENTRY_DSN=${SENTRY_DSN}
       - SENTRY_ENABLED=${SENTRY_ENABLED}
       - RABBITMQ_ENABLED=${RABBITMQ_ENABLED}
@@ -587,7 +550,7 @@ services:
       - WA_BUSINESS_URL=${WA_BUSINESS_URL}
       - WA_BUSINESS_VERSION=${WA_BUSINESS_VERSION}
       - WA_BUSINESS_LANGUAGE=${WA_BUSINESS_LANGUAGE}
-      # Webhooks (todas as configurações)
+      # Webhooks (todas as configuracoes)
       - WEBHOOK_GLOBAL_ENABLED=${WEBHOOK_GLOBAL_ENABLED}
       - WEBHOOK_GLOBAL_URL=${WEBHOOK_GLOBAL_URL}
       - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=${WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS}
@@ -628,7 +591,7 @@ services:
       - WEBHOOK_RETRY_MAX_DELAY_SECONDS=${WEBHOOK_RETRY_MAX_DELAY_SECONDS}
       - WEBHOOK_RETRY_JITTER_FACTOR=${WEBHOOK_RETRY_JITTER_FACTOR}
       - WEBHOOK_RETRY_NON_RETRYABLE_STATUS_CODES=${WEBHOOK_RETRY_NON_RETRYABLE_STATUS_CODES}
-      # Integrações
+      # Integracoes
       - TYPEBOT_ENABLED=${TYPEBOT_ENABLED}
       - TYPEBOT_API_VERSION=${TYPEBOT_API_VERSION}
       - CHATWOOT_ENABLED=${CHATWOOT_ENABLED}
@@ -670,7 +633,7 @@ services:
       POSTGRES_PASSWORD: ${evolution_db_password}
       POSTGRES_USER: postgres
       POSTGRES_DB: evolution_db
-      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
+      POSTGRES_INITDB_ARGS: --encoding=ASCII --locale=C
     volumes: [postgres_data:/var/lib/postgresql/data]
     networks: [evolution-net]
     healthcheck:
@@ -723,15 +686,15 @@ deploy_containers() {
     timeout 300 docker compose up -d
     check_status "Erro ao iniciar containers" "Containers iniciados"
     
-    # Aguardar containers ficarem saudáveis
-    log "Aguardando containers ficarem saudáveis..."
+    # Aguardar containers ficarem saudaveis
+    log "Aguardando containers ficarem saudaveis..."
     sleep 15
     
     # Testar conectividade
     if timeout 30 curl -s http://localhost:8080/ >/dev/null 2>&1; then
-        log "✓ API respondendo"
+        log "OK API respondendo"
     else
-        log "⚠ API pode não estar respondendo ainda"
+        log "AVISO: API pode nao estar respondendo ainda"
         docker logs evolution_api --tail 10
     fi
 }
@@ -744,23 +707,23 @@ show_final_status() {
         --filter "name=evolution_api" --filter "name=postgres" --filter "name=redis"
     
     echo ""
-    echo "=== INFORMAÇÕES DA APLICAÇÃO ==="
-    log "✓ Evolution API configurada com segurança!"
+    echo "=== INFORMACOES DA APLICACAO ==="
+    log "OK Evolution API configurada com seguranca!"
     echo "🌐 URL: http://${VM_IP}:8080"
     echo "🔑 API Key: ${evolution_api_key}"
     echo "📊 Swagger: http://${VM_IP}:8080/swagger"
     
     echo ""
-    echo "=== COMANDOS ÚTEIS ==="
+    echo "=== COMANDOS UTEIS ==="
     echo "Logs: docker logs evolution_api -f"
     echo "Reiniciar: docker compose restart"
     echo "Status: docker ps"
     echo "Parar: docker compose down"
     
     echo ""
-    log "✅ DEPLOY CONCLUÍDO COM SUCESSO!"
+    log "OK DEPLOY CONCLUIDO COM SUCESSO!"
     
-    # Limpar variáveis sensíveis da memória
+    # Limpar variaveis sensiveis da memoria
     unset evolution_api_key evolution_db_password evolution_jwt_secret evolution_sentry_dsn
     unset evolution_s3_access_key evolution_s3_secret_key evolution_rabbitmq_uri
     unset evolution_pusher_app_id evolution_pusher_key evolution_pusher_secret
@@ -768,9 +731,8 @@ show_final_status() {
     unset evolution_chatwoot_db_uri evolution_ssl_privkey evolution_ssl_fullchain
 }
 
-# Execução principal
+# Execucao principal
 main() {
-    setup_utf8
     check_dependencies
     load_secrets
     get_vm_ip
