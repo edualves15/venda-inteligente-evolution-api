@@ -190,6 +190,8 @@ setup_environment() {
     declare -A AUTH_CONFIG=(
         [AUTHENTICATION_API_KEY]="$evolution_api_key"
         [AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES]="true"
+        [JWT_SECRET]="$evolution_jwt_secret"
+        [AUTHENTICATION_JWT_SECRET]="$evolution_jwt_secret"
     )
     
     # Configurações de banco de dados
@@ -222,6 +224,10 @@ setup_environment() {
     # Configurações de comunicação
     declare -A COMM_CONFIG=(
         [SQS_ENABLED]="false"
+        [SQS_ACCESS_KEY_ID]=""
+        [SQS_SECRET_ACCESS_KEY]=""
+        [SQS_ACCOUNT_ID]=""
+        [SQS_REGION]=""
         [WEBSOCKET_ENABLED]="false"
         [WEBSOCKET_GLOBAL_EVENTS]="false"
         [WA_BUSINESS_TOKEN_WEBHOOK]="evolution"
@@ -312,21 +318,31 @@ setup_conditional_configs() {
     
     # RabbitMQ
     if [ -n "$evolution_rabbitmq_uri" ] && [ "$evolution_rabbitmq_uri" != "amqp://localhost" ]; then
-        export RABBITMQ_ENABLED="true" RABBITMQ_URI="$evolution_rabbitmq_uri" RABBITMQ_EXCHANGE_NAME="evolution"
+        declare -A RABBITMQ_VARS=(
+            [RABBITMQ_ENABLED]="true" [RABBITMQ_URI]="$evolution_rabbitmq_uri" 
+            [RABBITMQ_EXCHANGE_NAME]="evolution" [RABBITMQ_FRAME_MAX]="8192"
+            [RABBITMQ_GLOBAL_ENABLED]="false" [RABBITMQ_PREFIX_KEY]="evolution"
+        )
+        for var in "${!RABBITMQ_VARS[@]}"; do export "$var"="${RABBITMQ_VARS[$var]}"; done
     else
-        export RABBITMQ_ENABLED="false"
+        export RABBITMQ_ENABLED="false" RABBITMQ_URI="amqp://localhost"
     fi
     
     # S3
     if [ -n "$evolution_s3_access_key" ] && [ -n "$evolution_s3_secret_key" ]; then
         declare -A S3_VARS=(
             [S3_ENABLED]="true" [S3_REGION]="us-east-1" [S3_ACCESS_KEY]="$evolution_s3_access_key"
-            [S3_SECRET_KEY]="$evolution_s3_secret_key" [S3_BUCKET_NAME]="evolution-api"
-            [S3_PORT]="443" [S3_USE_SSL]="true"
+            [S3_SECRET_KEY]="$evolution_s3_secret_key" [S3_BUCKET]="evolution-api"
+            [S3_PORT]="443" [S3_USE_SSL]="true" [S3_ENDPOINT]="s3.amazonaws.com"
         )
         for var in "${!S3_VARS[@]}"; do export "$var"="${S3_VARS[$var]}"; done
     else
-        export S3_ENABLED="false"
+        declare -A S3_DEFAULTS=(
+            [S3_ENABLED]="false" [S3_ACCESS_KEY]="" [S3_SECRET_KEY]=""
+            [S3_BUCKET]="" [S3_PORT]="443" [S3_USE_SSL]="true"
+            [S3_ENDPOINT]="" [S3_REGION]=""
+        )
+        for var in "${!S3_DEFAULTS[@]}"; do export "$var"="${S3_DEFAULTS[$var]}"; done
     fi
     
     # Pusher
@@ -335,10 +351,18 @@ setup_conditional_configs() {
             [PUSHER_ENABLED]="true" [PUSHER_APP_ID]="$evolution_pusher_app_id"
             [PUSHER_KEY]="$evolution_pusher_key" [PUSHER_SECRET]="$evolution_pusher_secret"
             [PUSHER_CLUSTER]="us2" [PUSHER_USE_TLS]="true"
+            [PUSHER_GLOBAL_ENABLED]="false" [PUSHER_GLOBAL_APP_ID]=""
+            [PUSHER_GLOBAL_KEY]="" [PUSHER_GLOBAL_SECRET]=""
+            [PUSHER_GLOBAL_CLUSTER]="" [PUSHER_GLOBAL_USE_TLS]="true"
         )
         for var in "${!PUSHER_VARS[@]}"; do export "$var"="${PUSHER_VARS[$var]}"; done
     else
-        export PUSHER_ENABLED="false"
+        declare -A PUSHER_DEFAULTS=(
+            [PUSHER_ENABLED]="false" [PUSHER_GLOBAL_ENABLED]="false"
+            [PUSHER_GLOBAL_APP_ID]="" [PUSHER_GLOBAL_KEY]=""
+            [PUSHER_GLOBAL_SECRET]="" [PUSHER_GLOBAL_CLUSTER]="" [PUSHER_GLOBAL_USE_TLS]="true"
+        )
+        for var in "${!PUSHER_DEFAULTS[@]}"; do export "$var"="${PUSHER_DEFAULTS[$var]}"; done
     fi
     
     # Proxy
@@ -358,29 +382,44 @@ setup_conditional_configs() {
         declare -A CHATWOOT_VARS=(
             [CHATWOOT_ENABLED]="true" [CHATWOOT_DB_CONNECTION_URI]="$evolution_chatwoot_db_uri"
             [CHATWOOT_MESSAGE_READ]="true" [CHATWOOT_MESSAGE_DELETE]="true" [CHATWOOT_BOT_CONTACT]="false"
+            [CHATWOOT_IMPORT_DATABASE_CONNECTION_URI]="" [CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE]="true"
         )
         for var in "${!CHATWOOT_VARS[@]}"; do export "$var"="${CHATWOOT_VARS[$var]}"; done
     else
-        export CHATWOOT_ENABLED="false"
+        declare -A CHATWOOT_DEFAULTS=(
+            [CHATWOOT_ENABLED]="false" [CHATWOOT_MESSAGE_READ]="true" [CHATWOOT_MESSAGE_DELETE]="true"
+            [CHATWOOT_BOT_CONTACT]="false" [CHATWOOT_IMPORT_DATABASE_CONNECTION_URI]=""
+            [CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE]="true"
+        )
+        for var in "${!CHATWOOT_DEFAULTS[@]}"; do export "$var"="${CHATWOOT_DEFAULTS[$var]}"; done
     fi
     
     # Audio Converter
     if [ -n "$evolution_audio_converter_key" ]; then
         export AUDIO_CONVERTER_KEY="$evolution_audio_converter_key" AUDIO_CONVERTER_ENABLED="true"
+        export API_AUDIO_CONVERTER="http://localhost:4040/process-audio"
+        export API_AUDIO_CONVERTER_KEY="$evolution_audio_converter_key"
     else
-        export AUDIO_CONVERTER_ENABLED="false"
+        export AUDIO_CONVERTER_ENABLED="false" API_AUDIO_CONVERTER="" API_AUDIO_CONVERTER_KEY=""
     fi
     
     # SSL
     if [ -n "$evolution_ssl_privkey" ] && [ -n "$evolution_ssl_fullchain" ]; then
         export SSL_PRIVKEY="$evolution_ssl_privkey" SSL_FULLCHAIN="$evolution_ssl_fullchain" HTTPS_ENABLED="true"
+        export SSL_CONF_PRIVKEY="$evolution_ssl_privkey" SSL_CONF_FULLCHAIN="$evolution_ssl_fullchain"
     else
-        export HTTPS_ENABLED="false"
+        export HTTPS_ENABLED="false" SSL_PRIVKEY="" SSL_FULLCHAIN=""
+        export SSL_CONF_PRIVKEY="" SSL_CONF_FULLCHAIN=""
     fi
     
     # Export das variáveis de secrets usadas diretamente no docker-compose
     export evolution_db_password="$evolution_db_password"
     export evolution_api_key="$evolution_api_key"
+    export evolution_jwt_secret="$evolution_jwt_secret"
+    
+    # JWT/Auth configurações críticas
+    export JWT_SECRET="$evolution_jwt_secret"
+    export AUTHENTICATION_JWT_SECRET="$evolution_jwt_secret"
 }
 
 # Criar docker-compose otimizado
@@ -425,6 +464,8 @@ services:
       # Autenticação (SENSÍVEL)
       - AUTHENTICATION_API_KEY=${AUTHENTICATION_API_KEY}
       - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=${AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES}
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTHENTICATION_JWT_SECRET=${AUTHENTICATION_JWT_SECRET}
       # Banco (SENSÍVEL)
       - DATABASE_PROVIDER=${DATABASE_PROVIDER}
       - DATABASE_CONNECTION_URI=${DATABASE_CONNECTION_URI}
@@ -444,7 +485,44 @@ services:
       - SENTRY_ENABLED=${SENTRY_ENABLED}
       - RABBITMQ_ENABLED=${RABBITMQ_ENABLED}
       - RABBITMQ_URI=${RABBITMQ_URI}
+      - RABBITMQ_EXCHANGE_NAME=${RABBITMQ_EXCHANGE_NAME}
+      - RABBITMQ_FRAME_MAX=${RABBITMQ_FRAME_MAX}
+      - RABBITMQ_GLOBAL_ENABLED=${RABBITMQ_GLOBAL_ENABLED}
+      - RABBITMQ_PREFIX_KEY=${RABBITMQ_PREFIX_KEY}
+      # RabbitMQ Events
+      - RABBITMQ_EVENTS_APPLICATION_STARTUP=${RABBITMQ_EVENTS_APPLICATION_STARTUP:-false}
+      - RABBITMQ_EVENTS_INSTANCE_CREATE=${RABBITMQ_EVENTS_INSTANCE_CREATE:-false}
+      - RABBITMQ_EVENTS_INSTANCE_DELETE=${RABBITMQ_EVENTS_INSTANCE_DELETE:-false}
+      - RABBITMQ_EVENTS_QRCODE_UPDATED=${RABBITMQ_EVENTS_QRCODE_UPDATED:-false}
+      - RABBITMQ_EVENTS_MESSAGES_SET=${RABBITMQ_EVENTS_MESSAGES_SET:-false}
+      - RABBITMQ_EVENTS_MESSAGES_UPSERT=${RABBITMQ_EVENTS_MESSAGES_UPSERT:-false}
+      - RABBITMQ_EVENTS_MESSAGES_EDITED=${RABBITMQ_EVENTS_MESSAGES_EDITED:-false}
+      - RABBITMQ_EVENTS_MESSAGES_UPDATE=${RABBITMQ_EVENTS_MESSAGES_UPDATE:-false}
+      - RABBITMQ_EVENTS_MESSAGES_DELETE=${RABBITMQ_EVENTS_MESSAGES_DELETE:-false}
+      - RABBITMQ_EVENTS_SEND_MESSAGE=${RABBITMQ_EVENTS_SEND_MESSAGE:-false}
+      - RABBITMQ_EVENTS_SEND_MESSAGE_UPDATE=${RABBITMQ_EVENTS_SEND_MESSAGE_UPDATE:-false}
+      - RABBITMQ_EVENTS_CONTACTS_SET=${RABBITMQ_EVENTS_CONTACTS_SET:-false}
+      - RABBITMQ_EVENTS_CONTACTS_UPSERT=${RABBITMQ_EVENTS_CONTACTS_UPSERT:-false}
+      - RABBITMQ_EVENTS_CONTACTS_UPDATE=${RABBITMQ_EVENTS_CONTACTS_UPDATE:-false}
+      - RABBITMQ_EVENTS_PRESENCE_UPDATE=${RABBITMQ_EVENTS_PRESENCE_UPDATE:-false}
+      - RABBITMQ_EVENTS_CHATS_SET=${RABBITMQ_EVENTS_CHATS_SET:-false}
+      - RABBITMQ_EVENTS_CHATS_UPSERT=${RABBITMQ_EVENTS_CHATS_UPSERT:-false}
+      - RABBITMQ_EVENTS_CHATS_UPDATE=${RABBITMQ_EVENTS_CHATS_UPDATE:-false}
+      - RABBITMQ_EVENTS_CHATS_DELETE=${RABBITMQ_EVENTS_CHATS_DELETE:-false}
+      - RABBITMQ_EVENTS_GROUPS_UPSERT=${RABBITMQ_EVENTS_GROUPS_UPSERT:-false}
+      - RABBITMQ_EVENTS_GROUP_UPDATE=${RABBITMQ_EVENTS_GROUP_UPDATE:-false}
+      - RABBITMQ_EVENTS_GROUP_PARTICIPANTS_UPDATE=${RABBITMQ_EVENTS_GROUP_PARTICIPANTS_UPDATE:-false}
+      - RABBITMQ_EVENTS_CONNECTION_UPDATE=${RABBITMQ_EVENTS_CONNECTION_UPDATE:-false}
+      - RABBITMQ_EVENTS_REMOVE_INSTANCE=${RABBITMQ_EVENTS_REMOVE_INSTANCE:-false}
+      - RABBITMQ_EVENTS_LOGOUT_INSTANCE=${RABBITMQ_EVENTS_LOGOUT_INSTANCE:-false}
+      - RABBITMQ_EVENTS_CALL=${RABBITMQ_EVENTS_CALL:-false}
+      - RABBITMQ_EVENTS_TYPEBOT_START=${RABBITMQ_EVENTS_TYPEBOT_START:-false}
+      - RABBITMQ_EVENTS_TYPEBOT_CHANGE_STATUS=${RABBITMQ_EVENTS_TYPEBOT_CHANGE_STATUS:-false}
       - SQS_ENABLED=${SQS_ENABLED}
+      - SQS_ACCESS_KEY_ID=${SQS_ACCESS_KEY_ID}
+      - SQS_SECRET_ACCESS_KEY=${SQS_SECRET_ACCESS_KEY}
+      - SQS_ACCOUNT_ID=${SQS_ACCOUNT_ID}
+      - SQS_REGION=${SQS_REGION}
       - WEBSOCKET_ENABLED=${WEBSOCKET_ENABLED}
       - WEBSOCKET_GLOBAL_EVENTS=${WEBSOCKET_GLOBAL_EVENTS}
       # S3
@@ -452,9 +530,10 @@ services:
       - S3_ACCESS_KEY=${S3_ACCESS_KEY}
       - S3_SECRET_KEY=${S3_SECRET_KEY}
       - S3_REGION=${S3_REGION}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - S3_BUCKET=${S3_BUCKET}
       - S3_PORT=${S3_PORT}
       - S3_USE_SSL=${S3_USE_SSL}
+      - S3_ENDPOINT=${S3_ENDPOINT}
       # Pusher
       - PUSHER_ENABLED=${PUSHER_ENABLED}
       - PUSHER_APP_ID=${PUSHER_APP_ID}
@@ -462,6 +541,39 @@ services:
       - PUSHER_SECRET=${PUSHER_SECRET}
       - PUSHER_CLUSTER=${PUSHER_CLUSTER}
       - PUSHER_USE_TLS=${PUSHER_USE_TLS}
+      - PUSHER_GLOBAL_ENABLED=${PUSHER_GLOBAL_ENABLED}
+      - PUSHER_GLOBAL_APP_ID=${PUSHER_GLOBAL_APP_ID}
+      - PUSHER_GLOBAL_KEY=${PUSHER_GLOBAL_KEY}
+      - PUSHER_GLOBAL_SECRET=${PUSHER_GLOBAL_SECRET}
+      - PUSHER_GLOBAL_CLUSTER=${PUSHER_GLOBAL_CLUSTER}
+      - PUSHER_GLOBAL_USE_TLS=${PUSHER_GLOBAL_USE_TLS}
+      # Pusher Events
+      - PUSHER_EVENTS_APPLICATION_STARTUP=${PUSHER_EVENTS_APPLICATION_STARTUP:-true}
+      - PUSHER_EVENTS_QRCODE_UPDATED=${PUSHER_EVENTS_QRCODE_UPDATED:-true}
+      - PUSHER_EVENTS_MESSAGES_SET=${PUSHER_EVENTS_MESSAGES_SET:-true}
+      - PUSHER_EVENTS_MESSAGES_UPSERT=${PUSHER_EVENTS_MESSAGES_UPSERT:-true}
+      - PUSHER_EVENTS_MESSAGES_EDITED=${PUSHER_EVENTS_MESSAGES_EDITED:-true}
+      - PUSHER_EVENTS_MESSAGES_UPDATE=${PUSHER_EVENTS_MESSAGES_UPDATE:-true}
+      - PUSHER_EVENTS_MESSAGES_DELETE=${PUSHER_EVENTS_MESSAGES_DELETE:-true}
+      - PUSHER_EVENTS_SEND_MESSAGE=${PUSHER_EVENTS_SEND_MESSAGE:-true}
+      - PUSHER_EVENTS_SEND_MESSAGE_UPDATE=${PUSHER_EVENTS_SEND_MESSAGE_UPDATE:-true}
+      - PUSHER_EVENTS_CONTACTS_SET=${PUSHER_EVENTS_CONTACTS_SET:-true}
+      - PUSHER_EVENTS_CONTACTS_UPSERT=${PUSHER_EVENTS_CONTACTS_UPSERT:-true}
+      - PUSHER_EVENTS_CONTACTS_UPDATE=${PUSHER_EVENTS_CONTACTS_UPDATE:-true}
+      - PUSHER_EVENTS_PRESENCE_UPDATE=${PUSHER_EVENTS_PRESENCE_UPDATE:-true}
+      - PUSHER_EVENTS_CHATS_SET=${PUSHER_EVENTS_CHATS_SET:-true}
+      - PUSHER_EVENTS_CHATS_UPSERT=${PUSHER_EVENTS_CHATS_UPSERT:-true}
+      - PUSHER_EVENTS_CHATS_UPDATE=${PUSHER_EVENTS_CHATS_UPDATE:-true}
+      - PUSHER_EVENTS_CHATS_DELETE=${PUSHER_EVENTS_CHATS_DELETE:-true}
+      - PUSHER_EVENTS_GROUPS_UPSERT=${PUSHER_EVENTS_GROUPS_UPSERT:-true}
+      - PUSHER_EVENTS_GROUPS_UPDATE=${PUSHER_EVENTS_GROUPS_UPDATE:-true}
+      - PUSHER_EVENTS_GROUP_PARTICIPANTS_UPDATE=${PUSHER_EVENTS_GROUP_PARTICIPANTS_UPDATE:-true}
+      - PUSHER_EVENTS_CONNECTION_UPDATE=${PUSHER_EVENTS_CONNECTION_UPDATE:-true}
+      - PUSHER_EVENTS_LABELS_EDIT=${PUSHER_EVENTS_LABELS_EDIT:-true}
+      - PUSHER_EVENTS_LABELS_ASSOCIATION=${PUSHER_EVENTS_LABELS_ASSOCIATION:-true}
+      - PUSHER_EVENTS_CALL=${PUSHER_EVENTS_CALL:-true}
+      - PUSHER_EVENTS_TYPEBOT_START=${PUSHER_EVENTS_TYPEBOT_START:-false}
+      - PUSHER_EVENTS_TYPEBOT_CHANGE_STATUS=${PUSHER_EVENTS_TYPEBOT_CHANGE_STATUS:-false}
       # Proxy
       - PROXY_ENABLED=${PROXY_ENABLED}
       - PROXY_USERNAME=${PROXY_USERNAME}
@@ -523,6 +635,8 @@ services:
       - CHATWOOT_MESSAGE_DELETE=${CHATWOOT_MESSAGE_DELETE}
       - CHATWOOT_BOT_CONTACT=${CHATWOOT_BOT_CONTACT}
       - CHATWOOT_DB_CONNECTION_URI=${CHATWOOT_DB_CONNECTION_URI}
+      - CHATWOOT_IMPORT_DATABASE_CONNECTION_URI=${CHATWOOT_IMPORT_DATABASE_CONNECTION_URI}
+      - CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE=${CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE}
       - OPENAI_ENABLED=${OPENAI_ENABLED}
       - DIFY_ENABLED=${DIFY_ENABLED}
       - N8N_ENABLED=${N8N_ENABLED}
@@ -530,10 +644,14 @@ services:
       # Audio Converter
       - AUDIO_CONVERTER_ENABLED=${AUDIO_CONVERTER_ENABLED}
       - AUDIO_CONVERTER_KEY=${AUDIO_CONVERTER_KEY}
+      - API_AUDIO_CONVERTER=${API_AUDIO_CONVERTER}
+      - API_AUDIO_CONVERTER_KEY=${API_AUDIO_CONVERTER_KEY}
       # SSL
       - HTTPS_ENABLED=${HTTPS_ENABLED}
       - SSL_PRIVKEY=${SSL_PRIVKEY}
       - SSL_FULLCHAIN=${SSL_FULLCHAIN}
+      - SSL_CONF_PRIVKEY=${SSL_CONF_PRIVKEY}
+      - SSL_CONF_FULLCHAIN=${SSL_CONF_FULLCHAIN}
       # Cache Redis
       - CACHE_REDIS_ENABLED=${CACHE_REDIS_ENABLED}
       - CACHE_REDIS_URI=${CACHE_REDIS_URI}
