@@ -532,7 +532,10 @@ services:
       timeout: 5s
       retries: 5
 
-volumes: [postgres_data, evolution_instances, evolution_store]
+volumes:
+  postgres_data:
+  evolution_instances:
+  evolution_store:
 networks:
   evolution-net: { driver: bridge }
 EOF

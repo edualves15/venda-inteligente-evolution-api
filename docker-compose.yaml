@@ -52,7 +52,7 @@ services:
       - POSTGRES_DB=evolution_db
       - POSTGRES_HOST_AUTH_METHOD=trust
     volumes:
-    - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
 
   # pgbouncer:
   #   image: edoburu/pgbouncer:latest
