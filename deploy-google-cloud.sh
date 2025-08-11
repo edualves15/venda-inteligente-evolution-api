@@ -17,6 +17,14 @@ export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 export LANGUAGE=en_US:en
 
+# Força reconfiguração UTF-8 se necessário
+if [ "$(locale charmap 2>/dev/null)" != "UTF-8" ]; then
+    echo "⚠️  Configurando UTF-8 no sistema..."
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    unset LANGUAGE
+fi
+
 echo "========================================"
 echo "  EVOLUTION API - INICIALIZAÇÃO SEGURA  "
 echo "========================================"
@@ -29,14 +37,24 @@ check_status() { [ $? -eq 0 ] && log "✓ $2" || { log "ERRO: $1"; exit 1; }; }
 setup_utf8() {
     log "Configurando UTF-8..."
     
+    # Forçar UTF-8 na sessão atual
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export LANGUAGE=C
+    
     # Verificar se locale C.UTF-8 está disponível
-    if ! locale -a | grep -q "C.UTF-8"; then
+    if ! locale -a 2>/dev/null | grep -q "C.UTF-8"; then
         log "Instalando suporte UTF-8..."
-        sudo apt-get update -qq
-        sudo apt-get install -y locales
-        sudo locale-gen C.UTF-8
-        sudo update-locale LANG=C.UTF-8
+        sudo apt-get update -qq >/dev/null 2>&1
+        sudo apt-get install -y locales >/dev/null 2>&1
+        sudo locale-gen C.UTF-8 >/dev/null 2>&1
+        sudo update-locale LANG=C.UTF-8 >/dev/null 2>&1
     fi
+    
+    # Re-exportar após instalação
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export LANGUAGE=C
     
     log "✓ UTF-8 configurado"
 }
@@ -359,6 +377,10 @@ setup_conditional_configs() {
     else
         export HTTPS_ENABLED="false"
     fi
+    
+    # Export das variáveis de secrets usadas diretamente no docker-compose
+    export evolution_db_password="$evolution_db_password"
+    export evolution_api_key="$evolution_api_key"
 }
 
 # Criar docker-compose otimizado
