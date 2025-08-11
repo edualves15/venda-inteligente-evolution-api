@@ -551,7 +551,7 @@ services:
       POSTGRES_PASSWORD: ${evolution_db_password}
       POSTGRES_USER: postgres
       POSTGRES_DB: evolution_db
-      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=pt_BR.UTF-8
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
     volumes: [postgres_data:/var/lib/postgresql/data]
     networks: [evolution-net]
     healthcheck:
