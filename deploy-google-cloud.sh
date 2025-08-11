@@ -12,8 +12,10 @@
 # Uso: ./deploy.sh
 # Repositório: https://github.com/edualves15/venda-inteligente-evolution-api
 
-# Configuração UTF-8
-export LANG=pt_BR.UTF-8 LC_ALL=pt_BR.UTF-8 LANGUAGE=pt_BR:pt:en
+# Configuração UTF-8 robusta (funciona em qualquer Ubuntu)
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
+export LANGUAGE=en_US:en
 
 echo "========================================"
 echo "  EVOLUTION API - INICIALIZAÇÃO SEGURA  "
@@ -22,6 +24,22 @@ echo "========================================"
 # Funções utilitárias
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"; }
 check_status() { [ $? -eq 0 ] && log "✓ $2" || { log "ERRO: $1"; exit 1; }; }
+
+# Configurar UTF-8 no sistema se necessário
+setup_utf8() {
+    log "Configurando UTF-8..."
+    
+    # Verificar se locale C.UTF-8 está disponível
+    if ! locale -a | grep -q "C.UTF-8"; then
+        log "Instalando suporte UTF-8..."
+        sudo apt-get update -qq
+        sudo apt-get install -y locales
+        sudo locale-gen C.UTF-8
+        sudo update-locale LANG=C.UTF-8
+    fi
+    
+    log "✓ UTF-8 configurado"
+}
 
 # Verificar dependências críticas
 check_dependencies() {
@@ -611,6 +629,7 @@ show_final_status() {
 
 # Execução principal
 main() {
+    setup_utf8
     check_dependencies
     load_secrets
     get_vm_ip
