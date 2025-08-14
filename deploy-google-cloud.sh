@@ -744,3 +744,45 @@ main() {
 
 # Executar script principal
 main "$@"
+
+# (Opcional) Configurar Nginx para HTTPS
+if command -v nginx &>/dev/null; then
+    log "Configurando Nginx para HTTPS..."
+    sudo mkdir -p /etc/nginx/ssl
+    sudo gcloud secrets versions access latest --secret='evolution-ssl-fullchain' > /tmp/fullchain.pem
+    sudo gcloud secrets versions access latest --secret='evolution-ssl-privkey' > /tmp/privkey.pem
+    sudo mv /tmp/fullchain.pem /etc/nginx/ssl/
+    sudo mv /tmp/privkey.pem /etc/nginx/ssl/
+    sudo chmod 600 /etc/nginx/ssl/privkey.pem
+    sudo chmod 644 /etc/nginx/ssl/fullchain.pem
+    sudo tee /etc/nginx/sites-available/evolution-api > /dev/null <<EOF
+server {
+    listen 443 ssl http2;
+    server_name $VM_IP;
+    ssl_certificate /etc/nginx/ssl/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+server {
+    listen 80;
+    return 301 https://$host$request_uri;
+}
+EOF
+    sudo ln -sf /etc/nginx/sites-available/evolution-api /etc/nginx/sites-enabled/
+    sudo rm -f /etc/nginx/sites-enabled/default
+    sudo nginx -t && sudo systemctl reload nginx
+    log "Nginx HTTPS configurado!"
+fi
+
+# (Opcional) Reforçar permissão do Secret Manager
+if command -v gcloud &>/dev/null; then
+    log "Ajustando permissão do Secret Manager para service account..."
+    gcloud projects remove-iam-policy-binding venda-inteligente-servicos --member="serviceAccount:evolution-api-sa@venda-inteligente-servicos.iam.gserviceaccount.com" --role="roles/secretmanager.admin"
+    gcloud projects add-iam-policy-binding venda-inteligente-servicos --member="serviceAccount:evolution-api-sa@venda-inteligente-servicos.iam.gserviceaccount.com" --role="roles/secretmanager.secretAccessor"
+fi
